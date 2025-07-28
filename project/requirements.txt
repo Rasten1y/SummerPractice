@@ -1,0 +1,7 @@
+torch>=1.12
+torchvision
+timm
+torchmetrics
+Pillow
+numpy
+scikit-learn
