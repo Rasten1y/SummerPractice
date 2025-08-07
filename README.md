@@ -21,6 +21,7 @@ venv\Scripts\activate         # Windows
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
 ## Подготовка данных
 Тестовые изображения разместите в папке data в формате:
 ```
@@ -60,6 +61,19 @@ data/test\night10.png          → NIGHT (p_day=0.07)
 data/test\night8.png           → NIGHT (p_day=0.46)
 data/test\night9.png           → NIGHT (p_day=0.00)
 ```
+
+## Поддержка Git LFS
+
+Весовые файлы модели (`*.pt`) хранятся через Git LFS:
+
+```bash
+git lfs install
+git lfs track "*.pt"
+git add .gitattributes
+git commit -m "Enable LFS for model weights"
+git push origin main
+```
+
 ## Настройка
 Гиперпараметры обучения (NUM_FOLDS, EPOCHS, BATCH_SIZE, LR) можно изменить в src/train.py.
 

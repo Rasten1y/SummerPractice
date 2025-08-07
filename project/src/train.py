@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, models
 from sklearn.model_selection import StratifiedKFold
-from torchmetrics import AUROC
+from torchmetrics import F1Score
 from PIL import Image
 
 # ====== Установка random seed ======
@@ -91,7 +91,7 @@ def train_ensemble():
 
     for fold, (train_idx, val_idx) in enumerate(skf.split(paths, labels), start=1):
         print(f"\n=== Fold {fold}/{NUM_FOLDS} ===")
-        seed = SEED_BASE + fold; set_seed(seed)
+        set_seed(SEED_BASE + fold)
 
         train_paths, train_labels = paths[train_idx], labels[train_idx]
         val_paths, val_labels     = paths[val_idx], labels[val_idx]
@@ -115,11 +115,9 @@ def train_ensemble():
         optimizer = torch.optim.Adam(model.parameters(), lr=LR)
         pos_weight = torch.tensor([(len(train_labels) - train_labels.sum()) / train_labels.sum()]).to(DEVICE)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        auc_metric = AUROC(task="binary").to(DEVICE)
+        f1_metric = F1Score(task="binary", threshold=0.5).to(DEVICE)
 
-        best_auc = 0.0
-        best_loss = float('inf')
-        best_state = None
+        best_f1, best_loss, best_state = 0.0, float('inf'), None
 
         for epoch in range(1, EPOCHS+1):
             model.train()
@@ -129,26 +127,25 @@ def train_ensemble():
                 loss = criterion(logits, y)
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
 
-            model.eval(); auc_metric.reset(); val_losses = []
+            model.eval(); f1_metric.reset(); val_losses, all_preds, all_targets = [], [], []
             with torch.no_grad():
                 for x, y in val_loader:
                     x, y = x.to(DEVICE), y.to(DEVICE)
                     logits = model(x).squeeze(1)
                     val_losses.append(criterion(logits, y).item())
                     preds = torch.sigmoid(logits)
-                    auc_metric.update(preds, y.int())
-            val_auc = auc_metric.compute().item()
+                    f1_metric.update(preds, y.int())
+            val_f1 = f1_metric.compute().item()
             val_loss = float(np.mean(val_losses))
-            print(f"Fold {fold} Ep{epoch:02d}: Val Loss={val_loss:.4f}, Val AUC={val_auc:.4f}")
+            print(f"Fold {fold} Ep{epoch:02d}: Val Loss={val_loss:.4f}, Val F1={val_f1:.4f}")
 
-            if (val_auc > best_auc) or (val_auc == best_auc and val_loss < best_loss):
-                best_auc = val_auc
-                best_loss = val_loss
+            if (val_f1 > best_f1) or (val_f1 == best_f1 and val_loss < best_loss):
+                best_f1, best_loss = val_f1, val_loss
                 best_state = model.state_dict()
 
-        ckpt_path = f"{CHECKPOINT_DIR}/mobilenetv3_fold{fold}.pt"
-        torch.save(best_state, ckpt_path)
-        print(f"Saved best model for fold {fold}: auc={best_auc:.4f}, loss={best_loss:.4f} -> {ckpt_path}")
+        ckpt_name = f"mobilenetv3_fold{fold}_f1{best_f1:.4f}_loss{best_loss:.4f}.pt"
+        torch.save(best_state, os.path.join(CHECKPOINT_DIR, ckpt_name))
+        print(f"Saved best model for fold {fold}: {ckpt_name}")
 
     print("\nAll folds completed.")
 
